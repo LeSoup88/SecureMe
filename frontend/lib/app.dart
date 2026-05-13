@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'core/constants/app_colors.dart';
 import 'features/auth/login_page.dart';
-import 'features/home/home_shell.dart';
 
 class SecureMeApp extends StatelessWidget {
   const SecureMeApp({super.key});
