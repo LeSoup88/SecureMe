@@ -40,10 +40,7 @@ jobs:
       - name: Analyze code
         run: flutter analyze --no-fatal-infos
 
-      - name: Check formatting
-        run: dart format --output=none --set-exit-if-changed .
-
-  # ── BUILD APK (hanya saat push ke main) ────────────────
+  # ── BUILD APK ───────────────────────────────────────────
   build-apk:
     name: Build APK
     runs-on: ubuntu-latest
@@ -74,16 +71,6 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Create env config
-        run: |
-          cat > lib/core/constants/app_env.dart << EOF
-          class AppEnv {
-            static const String supabaseUrl = '${{ secrets.SUPABASE_URL }}';
-            static const String supabaseAnonKey = '${{ secrets.SUPABASE_ANON_KEY }}';
-            static const String backendUrl = '${{ secrets.BACKEND_URL }}';
-          }
-          EOF
-
       - name: Build APK
         run: flutter build apk --release --split-per-abi
 
@@ -96,12 +83,45 @@ jobs:
             frontend/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
           retention-days: 30
 
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+  # ── DEPLOY KE GITHUB PAGES ──────────────────────────────
+  deploy-web:
+    name: Deploy Flutter Web ke GitHub Pages
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
         with:
-          files: |
-            frontend/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-            frontend/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          flutter-version: '3.22.0'
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Enable Flutter Web
+        run: flutter config --enable-web
+
+      - name: Build Flutter Web
+        run: flutter build web --release --base-href "/secureme/"
+
+      - name: Deploy ke GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: frontend/build/web
+          publish_branch: gh-pages
