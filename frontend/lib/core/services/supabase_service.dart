@@ -3,71 +3,66 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class SupabaseService {
   static SupabaseClient get client => Supabase.instance.client;
 
-  // ── AUTH ──────────────────────────────────────────────
+  static User? get currentUser => client.auth.currentUser;
+  static bool get isLoggedIn => currentUser != null;
 
-  static Future<AuthResponse> register({
-    required String email,
-    required String password,
-    required String fullName,
-    required String phone,
-  }) async {
-    final response = await client.auth.signUp(
-      email: email,
-      password: password,
-      data: {'full_name': fullName, 'phone': phone},
-    );
-    return response;
-  }
-
-  static Future<AuthResponse> login({
-    required String email,
-    required String password,
-  }) async {
-    final response = await client.auth.signInWithPassword(
-      email: email,
-      password: password,
-    );
-    return response;
-  }
+  // ── AUTH USER ─────────────────────────────────────────
 
   static Future<void> logout() async {
     await client.auth.signOut();
   }
 
-  static User? get currentUser => client.auth.currentUser;
-  static bool get isLoggedIn => currentUser != null;
+  // ── AUTH ADMIN ────────────────────────────────────────
 
-  // ── REPORTS ───────────────────────────────────────────
+  static Future<Map<String, dynamic>?> loginAdmin({
+  required String email,
+  required String password,
+}) async {
+  print('=== ADMIN LOGIN ===');
+  print('Email: $email');
+
+  try {
+    final response = await client
+        .from('admins')
+        .select()
+        .eq('email', email)
+        .eq('password_hash', password)
+        .maybeSingle();
+
+    print('Admin login result: $response');
+
+    if (response == null) {
+      print('Admin not found');
+      return null;
+    }
+
+    return Map<String, dynamic>.from(response);
+  } catch (e) {
+    print('Admin login error: $e');
+    return null;
+  }
+}
+
+  // ── REPORTS (USER) ────────────────────────────────────
 
   static Future<List<Map<String, dynamic>>> getMyReports() async {
     final userId = currentUser?.id;
     print('=== GET MY REPORTS ===');
     print('Current user ID: $userId');
 
-    if (userId == null) {
-      print('User ID null, return empty');
-      return [];
-    }
+    if (userId == null) return [];
 
     try {
-      // Ambil semua laporan — baik yang ber-user_id maupun anonim
-      // yang dibuat dalam sesi ini (kita ambil semua lalu filter di client)
       final response = await client
           .from('reports')
           .select()
           .order('created_at', ascending: false);
 
-      print('Total reports from DB: ${response.length}');
-
-      // Filter di sisi client: tampilkan laporan milik user ini
-      // atau laporan anonim yang ada di database
       final filtered = (response as List)
-          .where((r) =>
-              r['user_id'] == userId ||
-              r['user_id'] == null)
+          .where((r) => r['user_id'] == userId || r['user_id'] == null)
           .toList();
 
-      print('Filtered reports for user: ${filtered.length}');
+      print('Filtered reports: ${filtered.length}');
       return List<Map<String, dynamic>>.from(filtered);
     } catch (e) {
       print('Error fetching reports: $e');
@@ -85,7 +80,6 @@ class SupabaseService {
     final userId = currentUser?.id;
     print('=== CREATE REPORT ===');
     print('User ID: $userId');
-    print('Type: $type, Anonymous: $isAnonymous');
 
     try {
       final response = await client.from('reports').insert({
@@ -97,12 +91,50 @@ class SupabaseService {
         'evidence_url': evidenceUrl,
         'source': 'Form Laporan',
         'status': 'Belum Ditangani',
+        'reported_by': isAnonymous ? 'Anonim' : 'Identitas Terlampir',
       }).select().single();
 
-      print('Report created successfully: ${response['id']}');
+      print('Report created: ${response['id']}');
       return response;
     } catch (e) {
       print('Error creating report: $e');
+      rethrow;
+    }
+  }
+
+  // ── REPORTS (ADMIN) ───────────────────────────────────
+
+  static Future<List<Map<String, dynamic>>> getAllReports() async {
+    print('=== GET ALL REPORTS (ADMIN) ===');
+    try {
+      final response = await client
+          .from('reports')
+          .select()
+          .order('created_at', ascending: false);
+
+      print('Total reports: ${response.length}');
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      print('Error fetching all reports: $e');
+      rethrow;
+    }
+  }
+
+  static Future<void> updateReportStatus({
+    required String reportId,
+    required String status,
+  }) async {
+    print('=== UPDATE REPORT STATUS ===');
+    print('Report ID: $reportId, Status: $status');
+
+    try {
+      await client
+          .from('reports')
+          .update({'status': status})
+          .eq('id', reportId);
+      print('Status updated');
+    } catch (e) {
+      print('Error updating status: $e');
       rethrow;
     }
   }
@@ -120,7 +152,7 @@ class SupabaseService {
     print('Lat: $latitude, Lng: $longitude');
 
     if (userId == null) {
-      throw Exception('User tidak terautentikasi. Silakan login ulang.');
+      throw Exception('User tidak terautentikasi');
     }
 
     final response = await client.from('reports').insert({
@@ -134,6 +166,7 @@ class SupabaseService {
       'is_anonymous': false,
       'source': 'Panic Button',
       'status': 'Belum Ditangani',
+      'reported_by': 'Identitas Terlampir',
     }).select().single();
 
     print('Panic report created: ${response['id']}');

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'core/constants/app_colors.dart';
-import 'features/auth/login_page.dart';
+import 'features/portal/portal_page.dart';
 
 class SecureMeApp extends StatelessWidget {
   const SecureMeApp({super.key});
@@ -18,7 +18,7 @@ class SecureMeApp extends StatelessWidget {
         fontFamily: 'Roboto',
         useMaterial3: true,
       ),
-      home: const LoginPage(),
+      home: const PortalPage(),
     );
   }
 }

@@ -245,144 +245,127 @@ class _PanicPageState extends State<PanicPage>
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        title: Row(
-          children: const [
-            Icon(Icons.shield, size: 22),
-            SizedBox(width: 8),
-            Text(
-              'SecureMe',
-              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20),
-            ),
-          ],
+Widget build(BuildContext context) {
+  return Scaffold(
+    backgroundColor: AppColors.background,
+    body: Column(
+      children: [
+        // ---- Status lokasi ----
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          color: _isActive
+              ? AppColors.danger.withOpacity(0.08)
+              : AppColors.primary.withOpacity(0.04),
+          child: Row(
+            children: [
+              Icon(
+                Icons.location_on_rounded,
+                color: _isActive ? AppColors.danger : AppColors.textMuted,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _locationLabel,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textMuted,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              TextButton(
+                onPressed: _loadLocation,
+                child: const Text(
+                  'Perbarui',
+                  style: TextStyle(fontSize: 11, color: AppColors.primary),
+                ),
+              ),
+            ],
+          ),
         ),
-        elevation: 0,
-      ),
-      body: Column(
-        children: [
-          // ---- Status lokasi ----
-          Container(
-            width: double.infinity,
-            padding:
-                const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            color: _isActive
-                ? AppColors.danger.withOpacity(0.08)
-                : AppColors.primary.withOpacity(0.04),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.location_on_rounded,
-                  color:
-                      _isActive ? AppColors.danger : AppColors.textMuted,
-                  size: 18,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    _locationLabel,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textMuted,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                TextButton(
-                  onPressed: _loadLocation,
-                  child: const Text(
-                    'Perbarui',
-                    style: TextStyle(fontSize: 11, color: AppColors.primary),
-                  ),
-                ),
-              ],
-            ),
-          ),
 
-          // ---- Tombol Panik ----
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (_isActive)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Text(
-                      'Mengirimkan sinyal darurat...',
-                      style: TextStyle(
-                        color: AppColors.danger,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                AnimatedBuilder(
-                  animation: _pulseAnim,
-                  builder: (_, child) => Transform.scale(
-                    scale: _isActive ? _pulseAnim.value : 1.0,
-                    child: child,
-                  ),
-                  child: _PanicButton(
-                    isActive: _isActive,
-                    loading: _loading,
-                    onTap: _loading ? null : _triggerPanic,
-                  ),
-                ),
-                const SizedBox(height: 36),
+        // ---- Tombol Panik ----
+        Expanded(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (_isActive)
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 40),
+                  padding: const EdgeInsets.only(bottom: 12),
                   child: Text(
-                    _isActive
-                        ? 'Tetap tenang. Bantuan sedang diproses.'
-                        : 'Tekan tombol jika Anda dalam bahaya. '
-                            'Lokasi GPS Anda akan langsung dikirim ke pihak berwajib.',
-                    textAlign: TextAlign.center,
+                    'Mengirimkan sinyal darurat...',
                     style: TextStyle(
-                      color: AppColors.textMuted,
-                      fontSize: 13,
-                      height: 1.6,
+                      color: AppColors.danger,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
-              ],
-            ),
+              AnimatedBuilder(
+                animation: _pulseAnim,
+                builder: (_, child) => Transform.scale(
+                  scale: _isActive ? _pulseAnim.value : 1.0,
+                  child: child,
+                ),
+                child: _PanicButton(
+                  isActive: _isActive,
+                  loading: _loading,
+                  onTap: _loading ? null : _triggerPanic,
+                ),
+              ),
+              const SizedBox(height: 36),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 40),
+                child: Text(
+                  _isActive
+                      ? 'Tetap tenang. Bantuan sedang diproses.'
+                      : 'Tekan tombol jika Anda dalam bahaya. '
+                          'Lokasi GPS Anda akan langsung dikirim ke pihak berwajib.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 13,
+                    height: 1.6,
+                  ),
+                ),
+              ),
+            ],
           ),
+        ),
 
-          // ---- Nomor darurat ----
-          Container(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-            child: Row(
-              children: [
-                _EmergencyChip(
-                  icon: Icons.local_police_rounded,
-                  label: 'Polisi',
-                  number: '110',
-                ),
-                const SizedBox(width: 12),
-                _EmergencyChip(
-                  icon: Icons.local_hospital_rounded,
-                  label: 'Ambulans',
-                  number: '118',
-                ),
-                const SizedBox(width: 12),
-                _EmergencyChip(
-                  icon: Icons.wc_rounded,
-                  label: 'Komnas',
-                  number: '021-3903963',
-                  flex: 2,
-                ),
-              ],
-            ),
+        // ---- Nomor darurat ----
+        Container(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+          child: Row(
+            children: [
+              _EmergencyChip(
+                icon: Icons.local_police_rounded,
+                label: 'Polisi',
+                number: '110',
+              ),
+              const SizedBox(width: 12),
+              _EmergencyChip(
+                icon: Icons.local_hospital_rounded,
+                label: 'Ambulans',
+                number: '118',
+              ),
+              const SizedBox(width: 12),
+              _EmergencyChip(
+                icon: Icons.wc_rounded,
+                label: 'Komnas',
+                number: '021-3903963',
+                flex: 2,
+              ),
+            ],
           ),
-        ],
-      ),
-    );
-  }
+        ),
+      ],
+    ),
+  );
+}
 }
 
 // ── Widget Tombol Panik ───────────────────────────────────────────────────────
