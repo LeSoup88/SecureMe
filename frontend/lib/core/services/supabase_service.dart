@@ -6,64 +6,79 @@ class SupabaseService {
   static User? get currentUser => client.auth.currentUser;
   static bool get isLoggedIn => currentUser != null;
 
-  // ── AUTH USER ─────────────────────────────────────────
+  // ── ANONYMOUS SESSION ─────────────────────────────────
 
-  static Future<void> logout() async {
-    await client.auth.signOut();
+  static Future<void> ensureSession() async {
+    if (currentUser == null) {
+      print('No session, signing in anonymously...');
+      try {
+        await client.auth.signInAnonymously();
+        print('Anonymous session created: ${currentUser?.id}');
+      } catch (e) {
+        print('Anonymous sign in error: $e');
+      }
+    } else {
+      print('Session exists: ${currentUser?.id}');
+    }
   }
 
   // ── AUTH ADMIN ────────────────────────────────────────
 
   static Future<Map<String, dynamic>?> loginAdmin({
-  required String email,
-  required String password,
-}) async {
-  print('=== ADMIN LOGIN ===');
-  print('Email: $email');
+    required String email,
+    required String password,
+  }) async {
+    print('=== ADMIN LOGIN ===');
+    print('Email: $email');
 
-  try {
-    final response = await client
-        .from('admins')
-        .select()
-        .eq('email', email)
-        .eq('password_hash', password)
-        .maybeSingle();
+    try {
+      final response = await client
+          .from('admins')
+          .select()
+          .eq('email', email)
+          .eq('password_hash', password)
+          .maybeSingle();
 
-    print('Admin login result: $response');
+      print('Admin login result: $response');
 
-    if (response == null) {
-      print('Admin not found');
+      if (response == null) {
+        print('Admin not found');
+        return null;
+      }
+
+      return Map<String, dynamic>.from(response);
+    } catch (e) {
+      print('Admin login error: $e');
       return null;
     }
-
-    return Map<String, dynamic>.from(response);
-  } catch (e) {
-    print('Admin login error: $e');
-    return null;
   }
-}
+
+  static Future<void> logout() async {
+    await client.auth.signOut();
+  }
 
   // ── REPORTS (USER) ────────────────────────────────────
 
   static Future<List<Map<String, dynamic>>> getMyReports() async {
+    await ensureSession();
     final userId = currentUser?.id;
     print('=== GET MY REPORTS ===');
     print('Current user ID: $userId');
 
-    if (userId == null) return [];
+    if (userId == null) {
+      print('User ID still null after ensureSession');
+      return [];
+    }
 
     try {
       final response = await client
           .from('reports')
           .select()
+          .eq('user_id', userId)
           .order('created_at', ascending: false);
 
-      final filtered = (response as List)
-          .where((r) => r['user_id'] == userId || r['user_id'] == null)
-          .toList();
-
-      print('Filtered reports: ${filtered.length}');
-      return List<Map<String, dynamic>>.from(filtered);
+      print('Reports fetched: ${response.length}');
+      return List<Map<String, dynamic>>.from(response);
     } catch (e) {
       print('Error fetching reports: $e');
       rethrow;
@@ -77,6 +92,7 @@ class SupabaseService {
     required bool isAnonymous,
     String? evidenceUrl,
   }) async {
+    await ensureSession();
     final userId = currentUser?.id;
     print('=== CREATE REPORT ===');
     print('User ID: $userId');
@@ -146,13 +162,14 @@ class SupabaseService {
     required double longitude,
     required String locationName,
   }) async {
+    await ensureSession();
     final userId = currentUser?.id;
     print('=== TRIGGER PANIC ===');
     print('User ID: $userId');
     print('Lat: $latitude, Lng: $longitude');
 
     if (userId == null) {
-      throw Exception('User tidak terautentikasi');
+      throw Exception('Gagal membuat sesi. Coba lagi.');
     }
 
     final response = await client.from('reports').insert({

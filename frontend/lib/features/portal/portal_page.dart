@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import '../home/home_shell.dart';
 import '../admin/admin_login_page.dart';
+import '../../core/services/supabase_service.dart';
 
 class PortalPage extends StatelessWidget {
   const PortalPage({super.key});
@@ -84,12 +85,17 @@ class PortalPage extends StatelessWidget {
                       width: double.infinity,
                       height: 56,
                       child: ElevatedButton.icon(
-                        onPressed: () => Navigator.pushReplacement(
+                        onPressed: () async {
+                          // Buat anonymous session sebelum masuk
+                        await SupabaseService.ensureSession();
+                        if (!context.mounted) return;
+                        Navigator.pushReplacement(
                           context,
                           MaterialPageRoute(
                             builder: (_) => const HomeShell(),
                           ),
-                        ),
+                        );
+                       },
                         icon: const Icon(Icons.person_rounded, size: 22),
                         label: const Text(
                           'Pengguna',
