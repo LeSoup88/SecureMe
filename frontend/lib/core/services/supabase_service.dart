@@ -1,25 +1,65 @@
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SupabaseService {
   static SupabaseClient get client => Supabase.instance.client;
-
   static User? get currentUser => client.auth.currentUser;
-  static bool get isLoggedIn => currentUser != null;
 
-  // ── ANONYMOUS SESSION ─────────────────────────────────
+  // ── SESSION ───────────────────────────────────────────
 
-  static Future<void> ensureSession() async {
-    if (currentUser == null) {
-      print('No session, signing in anonymously...');
-      try {
-        await client.auth.signInAnonymously();
-        print('Anonymous session created: ${currentUser?.id}');
-      } catch (e) {
-        print('Anonymous sign in error: $e');
-      }
-    } else {
-      print('Session exists: ${currentUser?.id}');
+  static Future<String> ensureSession() async {
+  final prefs = await SharedPreferences.getInstance();
+  List<String> allSessionIds = prefs.getStringList('all_session_ids') ?? [];
+
+  if (currentUser != null) {
+    print('Supabase session exists: ${currentUser!.id}');
+    if (!allSessionIds.contains(currentUser!.id)) {
+      allSessionIds.add(currentUser!.id);
+      await prefs.setStringList('all_session_ids', allSessionIds);
     }
+    await prefs.setString('user_session_id', currentUser!.id);
+    return currentUser!.id;
+  }
+
+  try {
+    print('Creating anonymous session...');
+    final res = await client.auth.signInAnonymously();
+    if (res.user != null) {
+      print('Anonymous session created: ${res.user!.id}');
+      if (!allSessionIds.contains(res.user!.id)) {
+        allSessionIds.add(res.user!.id);
+        await prefs.setStringList('all_session_ids', allSessionIds);
+      }
+      await prefs.setString('user_session_id', res.user!.id);
+      return res.user!.id;
+    }
+  } catch (e) {
+    print('signInAnonymously error: $e');
+  }
+
+  // Fallback: pakai saved ID
+  String? savedId = prefs.getString('user_session_id');
+  if (savedId != null) {
+    print('Using saved session ID: $savedId');
+    return savedId;
+  }
+
+  // Last resort
+  final newId = 'user-${DateTime.now().millisecondsSinceEpoch}';
+  allSessionIds.add(newId);
+  await prefs.setStringList('all_session_ids', allSessionIds);
+  await prefs.setString('user_session_id', newId);
+  print('Created new fallback ID: $newId');
+  return newId;
+}
+
+  static Future<String?> getSavedSessionId() async {
+    // Prioritas: Supabase auth user
+    if (currentUser != null) return currentUser!.id;
+
+    // Fallback: SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('user_session_id');
   }
 
   // ── AUTH ADMIN ────────────────────────────────────────
@@ -40,12 +80,7 @@ class SupabaseService {
           .maybeSingle();
 
       print('Admin login result: $response');
-
-      if (response == null) {
-        print('Admin not found');
-        return null;
-      }
-
+      if (response == null) return null;
       return Map<String, dynamic>.from(response);
     } catch (e) {
       print('Admin login error: $e');
@@ -60,30 +95,46 @@ class SupabaseService {
   // ── REPORTS (USER) ────────────────────────────────────
 
   static Future<List<Map<String, dynamic>>> getMyReports() async {
-    await ensureSession();
-    final userId = currentUser?.id;
-    print('=== GET MY REPORTS ===');
-    print('Current user ID: $userId');
+  final userId = await getSavedSessionId();
+  print('=== GET MY REPORTS ===');
+  print('User ID: $userId');
 
-    if (userId == null) {
-      print('User ID still null after ensureSession');
-      return [];
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    List<String> allSessionIds =
+        prefs.getStringList('all_session_ids') ?? [];
+
+    if (userId != null && !allSessionIds.contains(userId)) {
+      allSessionIds.add(userId);
+      await prefs.setStringList('all_session_ids', allSessionIds);
     }
 
-    try {
-      final response = await client
-          .from('reports')
-          .select()
-          .eq('user_id', userId)
-          .order('created_at', ascending: false);
+    print('All session IDs: $allSessionIds');
 
-      print('Reports fetched: ${response.length}');
-      return List<Map<String, dynamic>>.from(response);
-    } catch (e) {
-      print('Error fetching reports: $e');
-      rethrow;
-    }
+    // Fetch semua laporan
+    final response = await client
+        .from('reports')
+        .select()
+        .order('created_at', ascending: false);
+
+    print('Total reports in DB: ${response.length}');
+
+    // Tampilkan semua laporan yang:
+    // 1. user_id cocok dengan salah satu session ID
+    // 2. ATAU user_id null (laporan anonim)
+    final filtered = (response as List).where((r) {
+      final reportUserId = r['user_id'];
+      if (reportUserId == null) return true; // tampilkan laporan anonim
+      return allSessionIds.contains(reportUserId);
+    }).toList();
+
+    print('Reports fetched: ${filtered.length}');
+    return List<Map<String, dynamic>>.from(filtered);
+  } catch (e) {
+    print('Error fetching reports: $e');
+    rethrow;
   }
+}
 
   static Future<Map<String, dynamic>> createReport({
     required String type,
@@ -92,10 +143,9 @@ class SupabaseService {
     required bool isAnonymous,
     String? evidenceUrl,
   }) async {
-    await ensureSession();
-    final userId = currentUser?.id;
+    final userId = await ensureSession();
     print('=== CREATE REPORT ===');
-    print('User ID: $userId');
+    print('User ID: $userId, Anonymous: $isAnonymous');
 
     try {
       final response = await client.from('reports').insert({
@@ -148,7 +198,7 @@ class SupabaseService {
           .from('reports')
           .update({'status': status})
           .eq('id', reportId);
-      print('Status updated');
+      print('Status updated successfully');
     } catch (e) {
       print('Error updating status: $e');
       rethrow;
@@ -162,45 +212,46 @@ class SupabaseService {
     required double longitude,
     required String locationName,
   }) async {
-    await ensureSession();
-    final userId = currentUser?.id;
+    final userId = await ensureSession();
     print('=== TRIGGER PANIC ===');
     print('User ID: $userId');
     print('Lat: $latitude, Lng: $longitude');
-
-    if (userId == null) {
-      throw Exception('Gagal membuat sesi. Coba lagi.');
-    }
-
-    final response = await client.from('reports').insert({
-      'user_id': userId,
-      'type': 'Darurat',
-      'location': locationName,
-      'latitude': latitude,
-      'longitude': longitude,
-      'description':
-          'Pengguna menekan tombol PANIK dan membutuhkan bantuan segera.',
-      'is_anonymous': false,
-      'source': 'Panic Button',
-      'status': 'Belum Ditangani',
-      'reported_by': 'Identitas Terlampir',
-    }).select().single();
-
-    print('Panic report created: ${response['id']}');
+    print('Location: $locationName');
 
     try {
-      await client.from('location_tracking').insert({
+      final response = await client.from('reports').insert({
         'user_id': userId,
-        'report_id': response['id'],
+        'type': 'Darurat',
+        'location': locationName,
         'latitude': latitude,
         'longitude': longitude,
-      });
-      print('Location tracking saved');
-    } catch (e) {
-      print('Location tracking error (non-fatal): $e');
-    }
+        'description':
+            'Pengguna menekan tombol PANIK dan membutuhkan bantuan segera.',
+        'is_anonymous': false,
+        'source': 'Panic Button',
+        'status': 'Belum Ditangani',
+        'reported_by': 'Identitas Terlampir',
+      }).select().single();
 
-    return response;
+      print('Panic report created: ${response['id']}');
+
+      try {
+        await client.from('location_tracking').insert({
+          'user_id': userId,
+          'report_id': response['id'],
+          'latitude': latitude,
+          'longitude': longitude,
+        });
+        print('Location tracking saved');
+      } catch (e) {
+        print('Location tracking error (non-fatal): $e');
+      }
+
+      return response;
+    } catch (e) {
+      print('Panic error: $e');
+      rethrow;
+    }
   }
 
   static Future<void> updateLocation({
@@ -209,11 +260,15 @@ class SupabaseService {
     required double longitude,
   }) async {
     final userId = currentUser?.id;
-    await client.from('location_tracking').insert({
-      'user_id': userId,
-      'report_id': reportId,
-      'latitude': latitude,
-      'longitude': longitude,
-    });
+    try {
+      await client.from('location_tracking').insert({
+        'user_id': userId,
+        'report_id': reportId,
+        'latitude': latitude,
+        'longitude': longitude,
+      });
+    } catch (e) {
+      print('Update location error: $e');
+    }
   }
 }

@@ -1,7 +1,7 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
-import '../../core/services/api_service.dart';
+import '../../core/services/supabase_service.dart';
+import '../../widgets/status_badge.dart';
 
 class HistoryPage extends StatefulWidget {
   const HistoryPage({super.key});
@@ -10,7 +10,7 @@ class HistoryPage extends StatefulWidget {
 }
 
 class _HistoryPageState extends State<HistoryPage> {
-  List<dynamic> _reports = [];
+  List<Map<String, dynamic>> _reports = [];
   bool _loading = true;
   String? _error;
 
@@ -20,61 +20,39 @@ class _HistoryPageState extends State<HistoryPage> {
     _load();
   }
 
-  Future<void> _load() async {
-    setState(() { _loading = true; _error = null; });
-    try {
-      final token = await ApiService.getToken();
-      print('Token for history: $token');
+Future<void> _load() async {
+  setState(() { _loading = true; _error = null; });
+  try {
+    print('=== HISTORY PAGE LOAD ===');
+    final savedId = await SupabaseService.getSavedSessionId();
+    print('Saved session ID: $savedId');
+    print('Current user: ${SupabaseService.currentUser?.id}');
 
-      final res = await ApiService.getMyReports();
-      print('History response status: ${res.statusCode}');
-      print('History response body: ${res.body}');
-
-      if (res.statusCode == 200 || res.statusCode == 201) {
-        final decoded = jsonDecode(res.body);
-        setState(() {
-          _reports = decoded is List ? decoded : [];
-        });
-      } else {
-        setState(() => _error = 'Gagal memuat riwayat (${res.statusCode})');
-      }
-    } catch (e) {
-      print('History error: $e');
-      setState(() => _error = 'Tidak dapat terhubung ke server');
-    } finally {
-      setState(() => _loading = false);
+    // Cek semua laporan yang ada di database
+    final allReports = await SupabaseService.client
+        .from('reports')
+        .select('id, user_id, type, created_at')
+        .order('created_at', ascending: false);
+    print('ALL reports in DB: ${allReports.length}');
+    for (var r in allReports) {
+      print('  Report: id=${r['id']}, user_id=${r['user_id']}, type=${r['type']}');
     }
-  }
 
-  Color _statusColor(String status) {
-    if (status == 'Sedang Ditangani') return AppColors.info;
-    if (status == 'Sudah Ditangani') return AppColors.success;
-    return AppColors.warning;
+    final data = await SupabaseService.getMyReports();
+    print('Reports received: ${data.length}');
+    setState(() => _reports = data);
+  } catch (e) {
+    print('History load error: $e');
+    setState(() => _error = e.toString());
+  } finally {
+    setState(() => _loading = false);
   }
-
-  IconData _statusIcon(String status) {
-    if (status == 'Sedang Ditangani') return Icons.autorenew_rounded;
-    if (status == 'Sudah Ditangani') return Icons.check_circle_rounded;
-    return Icons.schedule_rounded;
-  }
+}
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        title: const Text('Riwayat Laporan',
-          style: TextStyle(fontWeight: FontWeight.w700)),
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            onPressed: _load,
-          ),
-        ],
-      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -83,19 +61,27 @@ class _HistoryPageState extends State<HistoryPage> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(Icons.error_outline_rounded,
-                        color: AppColors.danger, size: 48),
+                          color: AppColors.danger, size: 48),
                       const SizedBox(height: 12),
-                      Text(_error!,
-                        style: TextStyle(color: AppColors.textMuted)),
+                      Text('Gagal memuat riwayat',
+                          style: TextStyle(
+                              color: AppColors.textDark,
+                              fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 4),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 32),
+                        child: Text(_error!,
+                            style: TextStyle(
+                                color: AppColors.textMuted, fontSize: 12),
+                            textAlign: TextAlign.center),
+                      ),
                       const SizedBox(height: 16),
                       ElevatedButton(
-                        onPressed: _load,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
-                        ),
-                        child: const Text('Coba Lagi'),
-                      ),
+                          onPressed: _load,
+                          style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: Colors.white),
+                          child: const Text('Coba Lagi')),
                     ],
                   ),
                 )
@@ -105,11 +91,15 @@ class _HistoryPageState extends State<HistoryPage> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(Icons.inbox_rounded,
-                            color: AppColors.textMuted, size: 64),
+                              color: AppColors.textMuted, size: 64),
                           const SizedBox(height: 12),
                           Text('Belum ada laporan',
-                            style: TextStyle(
-                              color: AppColors.textMuted, fontSize: 15)),
+                              style: TextStyle(
+                                  color: AppColors.textMuted, fontSize: 15)),
+                          const SizedBox(height: 4),
+                          Text('Laporan yang kamu buat akan muncul di sini',
+                              style: TextStyle(
+                                  color: AppColors.textMuted, fontSize: 12)),
                         ],
                       ),
                     )
@@ -118,11 +108,18 @@ class _HistoryPageState extends State<HistoryPage> {
                       child: ListView.separated(
                         padding: const EdgeInsets.all(16),
                         itemCount: _reports.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        separatorBuilder: (_, __) =>
+                            const SizedBox(height: 12),
                         itemBuilder: (_, i) {
                           final r = _reports[i];
                           final status = r['status'] ?? 'Belum Ditangani';
                           final isPanic = r['source'] == 'Panic Button';
+                          final createdAt = r['created_at'] != null
+                              ? r['created_at']
+                                  .toString()
+                                  .substring(0, 10)
+                              : '';
+
                           return Container(
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
@@ -141,15 +138,20 @@ class _HistoryPageState extends State<HistoryPage> {
                                   children: [
                                     Container(
                                       padding: const EdgeInsets.symmetric(
-                                        horizontal: 10, vertical: 4),
+                                          horizontal: 10, vertical: 4),
                                       decoration: BoxDecoration(
                                         color: isPanic
-                                            ? AppColors.danger.withOpacity(0.1)
-                                            : AppColors.primary.withOpacity(0.08),
-                                        borderRadius: BorderRadius.circular(6),
+                                            ? AppColors.danger
+                                                .withOpacity(0.1)
+                                            : AppColors.primary
+                                                .withOpacity(0.08),
+                                        borderRadius:
+                                            BorderRadius.circular(6),
                                       ),
                                       child: Text(
-                                        isPanic ? 'PANIC BUTTON' : 'FORM LAPORAN',
+                                        isPanic
+                                            ? 'PANIC BUTTON'
+                                            : 'FORM LAPORAN',
                                         style: TextStyle(
                                           fontSize: 10,
                                           fontWeight: FontWeight.w800,
@@ -157,72 +159,46 @@ class _HistoryPageState extends State<HistoryPage> {
                                               ? AppColors.danger
                                               : AppColors.primary,
                                           letterSpacing: 0.5,
-                                        )),
+                                        ),
+                                      ),
                                     ),
                                     const Spacer(),
-                                    Text(
-                                      r['created_at'] != null
-                                          ? r['created_at']
-                                              .toString()
-                                              .substring(0, 10)
-                                          : '',
-                                      style: TextStyle(
-                                        color: AppColors.textMuted,
-                                        fontSize: 11),
-                                    ),
+                                    Text(createdAt,
+                                        style: TextStyle(
+                                            color: AppColors.textMuted,
+                                            fontSize: 11)),
                                   ],
                                 ),
                                 const SizedBox(height: 10),
                                 Text(r['type'] ?? '',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 15,
-                                    color: AppColors.textDark)),
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 15,
+                                        color: AppColors.textDark)),
                                 const SizedBox(height: 4),
                                 Text(r['description'] ?? '',
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: AppColors.textMuted,
-                                    fontSize: 13,
-                                    height: 1.4)),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                        color: AppColors.textMuted,
+                                        fontSize: 13,
+                                        height: 1.4)),
                                 const SizedBox(height: 12),
                                 Row(
                                   children: [
                                     Icon(Icons.location_on_rounded,
-                                      size: 14, color: AppColors.textMuted),
+                                        size: 14,
+                                        color: AppColors.textMuted),
                                     const SizedBox(width: 4),
                                     Expanded(
                                       child: Text(r['location'] ?? '',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: AppColors.textMuted,
-                                          fontSize: 11)),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                              color: AppColors.textMuted,
+                                              fontSize: 11)),
                                     ),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 10, vertical: 5),
-                                      decoration: BoxDecoration(
-                                        color: _statusColor(status)
-                                            .withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(20),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(_statusIcon(status),
-                                            size: 12,
-                                            color: _statusColor(status)),
-                                          const SizedBox(width: 4),
-                                          Text(status,
-                                            style: TextStyle(
-                                              color: _statusColor(status),
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w700)),
-                                        ],
-                                      ),
-                                    ),
+                                    StatusBadge(status: status),
                                   ],
                                 ),
                               ],
