@@ -479,9 +479,28 @@ Untuk mengganti placeholder logo dengan logo kamu sendiri:
 
 ## Tim Pengembang
 
-**Kelompok 7**
+**Software Engineering - Kelompok 7**
+
 Stawin Revano-2802437114
+
 Calvin Dywen-2802421002
+
 Nabil Rafif Utomo - 2802435260
+
 Gilbert Nicholin - 2802436925
+
 Williams - 2802438136
+
+---
+
+**Mobile Hybrid Solution**
+
+Stawin Revano-2802437114
+
+Calvin Dywen-2802421002
+
+Nabil Rafif Utomo - 2802435260
+
+Gilbert Nicholin - 2802436925
+
+Nicholas Fellian - 2802429352
